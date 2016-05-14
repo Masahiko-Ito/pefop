@@ -104,8 +104,9 @@ static char *Tgetstr(char *id, char **area);
  * 大局変数
  */
 const char *Mode_name[2] = { "[En]", "[Ja]" };
+
 const char *Amsg =
-    "pefop-utf8 version 0.3 by Masahiko Ito.\nToggleKey=^J\n";
+    "pefop-utf8 version 0.4 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop-utf8 done!!\n";
 
 char *Shell;
@@ -150,6 +151,7 @@ int Curcand;			/* index of a selecting candidate */
 int Curpage;			/* page of modeline candidates */
 int Page[MAXCANDS];
 int Status;
+int Pefop_mode_org;		/* 変換モード 1:曖昧検索 0:完全一致 */
 int Pefop_mode;			/* 変換モード 1:曖昧検索 0:完全一致 */
 /* スタティックなメンバ(シグナルハンドラ用)の初期化 */
 void (*sig_fp) (void) = NULL;
@@ -208,7 +210,6 @@ void POBox(int ac, char **av, char *amsg, char *emsg, void (*fp) (void))
 	if (p_lang == NULL || strstr(p_lang, "-8")) {
 		Eucjp_to_utf8_cd = iconv_open("utf-8", "euc-jp");
 	}
-
 }
 
 /* destructer */
@@ -371,13 +372,15 @@ void loop()
 			reset_target();
 			length = 0;
 			del_cand(length);
+			Pefop_mode = Pefop_mode_org;
 			continue;
 		}
 		/* if you input ESC_KEY, goto alphabet input mode (specialize case for vi) */
 		if (Mode != POBOX_MODE_ALPHABET
 		    && (*s != '\0' && *s != '\b' && *s != '\r'
 			&& *s != '\n' && *s != NEXTPAGE_KEY
-			&& *s != PREVPAGE_KEY) && *s < CTRL_KEYS) {
+			&& *s != PREVPAGE_KEY && *s != '\t')
+		    && *s < CTRL_KEYS) {
 			Mode = POBOX_MODE_ALPHABET;
 			modeline();
 			del_cand(length);
@@ -404,12 +407,15 @@ void loop()
 
 		if (search) {
 			char *p;
-			if (Target[0] == '\0'){
-				pobox_getcands((char *) Target, (char *) Candstr,
-				       sizeof(Candstr) - 1, 1);
-			}else{
-				pobox_getcands((char *) Target, (char *) Candstr,
-				       sizeof(Candstr) - 1, Pefop_mode);
+			if (Target[0] == '\0') {
+				pobox_getcands((char *) Target,
+					       (char *) Candstr,
+					       sizeof(Candstr) - 1, 1);
+			} else {
+				pobox_getcands((char *) Target,
+					       (char *) Candstr,
+					       sizeof(Candstr) - 1,
+					       Pefop_mode);
 			}
 			Ncands = 0;
 			p = strtok((char *) Candstr, "\t\r\n");	/* skip */
@@ -491,6 +497,18 @@ int select_on_routine(unsigned char c)
 		}
 		break;
 
+	case '\t':		/* TAB */
+		Status = POBOX_SELECT_OFF;
+		Curcand = -1;
+		Curpage = 0;
+		if (Pefop_mode == 0) {
+			Pefop_mode = 1;
+		} else {
+			Pefop_mode = 0;
+		}
+		ret = 1;
+		break;
+
 	default:
 		if (Curcand < 0) {
 			decide(Target);
@@ -553,6 +571,15 @@ int select_off_routine(unsigned char c)
 		Curcand = 0;
 		break;
 
+	case '\t':		/* TAB */
+		if (Pefop_mode == 0) {
+			Pefop_mode = 1;
+		} else {
+			Pefop_mode = 0;
+		}
+		ret = 1;
+		break;
+
 	default:
 		if (c == '\0') {	/* [CTRL]+[SPACE] => [SPACE] */
 			c = ' ';
@@ -603,14 +630,14 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 		}
 	}
 
-	Pefop_mode = 1;
+	Pefop_mode_org = 1;
 	pefop_exact = getenv("PEFOP_EXACT");
-	if (pefop_exact){
+	if (pefop_exact) {
 		if (strcmp(pefop_exact, "y") == 0 ||
 		    strcmp(pefop_exact, "yes") == 0 ||
 		    strcmp(pefop_exact, "Y") == 0 ||
 		    strcmp(pefop_exact, "YES") == 0) {
-			Pefop_mode = 0;
+			Pefop_mode_org = 0;
 		}
 	}
 
