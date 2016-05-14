@@ -1,4 +1,4 @@
-/* $Id: server.c,v 1.1.1.1 2012/11/05 16:25:54 m-ito Exp $
+/* $Id: server.c,v 1.5 2016/01/08 16:37:21 m-ito Exp $
  * Copyright (c) 2002 pobox-linux project
  *
  * from imopenpobox (yanai-san)
