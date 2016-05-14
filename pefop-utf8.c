@@ -1,12 +1,16 @@
 /*
- *  pefop - pofep-like POBox frontend processor
+ *  pefop-utf8 - pofep-like POBox frontend processor for UTF-8
  *           Created by Masahiko Ito <m-ito@myh.no-ip.org>
  *
- *  pefopはpofep(by TAKANO Ryousei <takano@os-omicron.org>)をオリジナルとしています。
+ *  pefop-utf8はpofep(by TAKANO Ryousei <takano@os-omicron.org>)をオリジナルとしています。
+ *
+ *  UTF-8対応は以下のパッチを参考にしています。
+ *
+ *    http://gentoo.osuosl.org/distfiles/canfep_utf8.diff
  *
  *  本ソースは以下の処理により整形されています。
  *
- *    $ indent -i8 -kr pefop.c
+ *    $ indent -i8 -kr pefop-utf8.c
  *
  */
 
@@ -27,6 +31,8 @@
 #include <sys/signal.h>
 #include <sys/wait.h>
 #include <termcap.h>		/* #include <term.h> */
+#include <errno.h>
+#include <iconv.h>
 #include "server.h"
 
 /*
@@ -85,6 +91,8 @@ void modeline();
 int select_on_routine(unsigned char);
 int select_off_routine(unsigned char);
 void loop();
+void write_utf8();
+char *iconv_string();
 int put1ch();
 static char *Tgetstr(char *id, char **area);
 
@@ -92,8 +100,9 @@ static char *Tgetstr(char *id, char **area);
  * 大局変数
  */
 const char *Mode_name[2] = { "[En]", "[Ja]" };
-const char *Amsg = "pefop version 0.1 by Masahiko Ito.\nToggleKey=^J\n";
-const char *Emsg = "pefop done!!\n";
+const char *Amsg =
+    "pefop-utf8 version 0.1 by Masahiko Ito.\nToggleKey=^J\n";
+const char *Emsg = "pefop-utf8 done!!\n";
 
 char *Shell;
 int Master;
@@ -103,6 +112,7 @@ int Subchild;
 struct termios Tt;
 struct termios Stt;
 struct winsize Win;
+iconv_t Eucjp_to_utf8_cd;
 char Line[BUFSIZ];
 int Fd_put1ch;
 int Rfd;
@@ -166,6 +176,8 @@ int main(int ac, char **av)
 void POBox(int ac, char **av, char *amsg, char *emsg, void (*fp) (void))
 {
 	int i;
+	char *p_lang = getenv("LANG");
+
 	if (!setlocale(LC_ALL, "")) {
 		fprintf(stderr, "setlocale() error\n");
 		exit(-1);
@@ -184,6 +196,10 @@ void POBox(int ac, char **av, char *amsg, char *emsg, void (*fp) (void))
 	Status = POBOX_SELECT_OFF;
 	Ncands = 0;
 	modeline();
+	if (p_lang == NULL || strstr(p_lang, "-8")) {
+		Eucjp_to_utf8_cd = iconv_open("utf-8", "euc-jp");
+	}
+
 }
 
 /* destructer */
@@ -192,6 +208,9 @@ void dPOBox()
 	int i;
 	for (i = 0; i < MAXCANDS; i++) {
 		free(Cands[i]);
+	}
+	if (Eucjp_to_utf8_cd != (iconv_t) - 1) {
+		iconv_close(Eucjp_to_utf8_cd);
 	}
 
 	/* disconnect OpenPOBoxServer */
@@ -217,7 +236,8 @@ void update_candlist()
 	tputs(Sc, 1, put1ch);
 	tputs(Ts, 1, put1ch);
 	tputs(Ce, 1, put1ch);
-	write(Rfd, Mode_name[Mode], strlen(Mode_name[Mode]));
+	write(Rfd, (char *) Mode_name[Mode],
+	      strlen((char *) Mode_name[Mode]));
 
 	int idx = 1, rev = 1, i;
 	for (i = Page[Curpage]
@@ -235,10 +255,12 @@ void update_candlist()
 		}
 		if (i == Curcand && rev) {
 			tputs(So, 1, put1ch);
-			write(Rfd, candbuf, strlen((char *) candbuf));
+			write_utf8(Rfd, (char *) candbuf,
+				   strlen((char *) candbuf));
 			tputs(Se, 1, put1ch);
 		} else {
-			write(Rfd, candbuf, strlen((char *) candbuf));
+			write_utf8(Rfd, (char *) candbuf,
+				   strlen((char *) candbuf));
 		}
 		write(Rfd, " ", 1);
 		++idx;
@@ -265,7 +287,7 @@ void decide(unsigned char *p)
 		pobox_selected(Curcand + 1);	/* なんで +1 ? */
 		pobox_context((char *) Cands[Curcand]);
 	}
-	write(Wfd, p, strlen((char *) p));
+	write_utf8(Wfd, (char *) p, strlen((char *) p));
 }
 
 /*
@@ -277,11 +299,11 @@ void put_cand(unsigned char *p, int len, int s)
 	tputs(Sc, 1, put1ch);
 	if (!s) {
 		tputs(So, 1, put1ch);
-		write(Rfd, p, len);
+		write_utf8(Rfd, (char *) p, len);
 		tputs(Se, 1, put1ch);
 	} else {
 		tputs(Us, 1, put1ch);
-		write(Rfd, p, len);
+		write_utf8(Rfd, (char *) p, len);
 		tputs(Ue, 1, put1ch);
 	}
 	tputs(Rc, 1, put1ch);
@@ -313,7 +335,8 @@ void modeline()
 
 	tputs(Ts, 1, put1ch);
 	tputs(Ce, 1, put1ch);
-	write(Rfd, Mode_name[Mode], strlen((char *) Mode_name[Mode]));
+	write(Rfd, (char *) Mode_name[Mode],
+	      strlen((char *) Mode_name[Mode]));
 	tputs(Fs, 1, put1ch);
 
 	tputs(Rc, 1, put1ch);
@@ -349,12 +372,12 @@ void loop()
 			Mode = POBOX_MODE_ALPHABET;
 			modeline();
 			del_cand(length);
-			write(Wfd, s, 1);
+			write(Wfd, (char *) s, 1);
 			continue;
 		}
 
 		if (Mode == POBOX_MODE_ALPHABET) {
-			write(Wfd, s, 1);
+			write(Wfd, (char *) s, 1);
 			continue;
 		}
 
@@ -491,14 +514,14 @@ int select_off_routine(unsigned char c)
 			Target[len - 1] = '\0';
 			ret = 1;
 		} else {
-			write(Wfd, s, 1);
+			write(Wfd, (char *) s, 1);
 		}
 		break;
 
 	case '\r':		/* decide pattern */
 	case '\n':
 		if (Curcand == -1 && *Target == '\0') {
-			write(Wfd, s, 1);
+			write(Wfd, (char *) s, 1);
 		} else {
 			Status = POBOX_SELECT_ON;
 			Curcand = 0;
@@ -516,12 +539,12 @@ int select_off_routine(unsigned char c)
 		if (c == '\0') {	/* [CTRL]+[SPACE] => [SPACE] */
 			c = ' ';
 			if (strlen((char *) Target) == 0) {
-				write(Wfd, &c, 1);
+				write(Wfd, (char *) &c, 1);
 				break;
 			}
 		}
 		if (!isprint(c)) {
-			write(Wfd, &c, 1);
+			write(Wfd, (char *) &c, 1);
 			break;
 		}
 
@@ -622,8 +645,8 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 	} else {
 		char *cs = tgoto(Tgetstr("cs", &pt), Li - 2, 0);
 		if (cs) {
-			write(1, Ce, strlen(Ce));
-			write(1, cs, strlen(cs));
+			tputs(Ce, 1, put1ch);
+			tputs(cs, 1, put1ch);
 		}
 		char *cl = Tgetstr("cl", &pt);
 		if (cl) {
@@ -895,6 +918,77 @@ static char *Tgetstr(char *id, char **area)
 	} else {
 		return (str);
 	}
+}
+
+/*
+ * for UTF-8
+ */
+void write_utf8(int fd, char *p, int len)
+{
+	if (Eucjp_to_utf8_cd == (iconv_t) - 1) {
+		write(fd, p, strlen(p));
+	} else {
+		char *putf8 = iconv_string(Eucjp_to_utf8_cd, p, len);
+		write(fd, putf8, strlen(putf8));
+		free(putf8);
+	}
+}
+
+char *iconv_string(iconv_t fd, char *str, int slen)
+{
+	char *from;
+	size_t fromlen;
+	char *to;
+	size_t tolen;
+	size_t len = 0;
+	size_t done = 0;
+	char *result = NULL;
+	char *p;
+
+	from = (char *) str;
+	fromlen = slen;
+	for (;;) {
+		if (len == 0 || errno == E2BIG) {
+			/* Allocate enough room for most conversions.  When re-allocating
+			 * increase the buffer size. */
+			len = len + fromlen * 2 + 40;
+			p = (char *) malloc((unsigned) len);
+			if (p != NULL && done > 0)
+				memcpy(p, result, done);
+			free(result);
+			result = p;
+			if (result == NULL)	/* out of memory */
+				break;
+		}
+
+		to = (char *) result + done;
+		tolen = len - done - 2;
+		/* Avoid a warning for systems with a wrong iconv() prototype by
+		 * casting the second argument to void *. */
+		if (iconv(fd, &from, &fromlen, &to, &tolen) !=
+		    (size_t) - 1) {
+			/* Finished, append a NUL. */
+			*to = 0;
+			break;
+		}
+		/* Check both ICONV_EILSEQ and EILSEQ, because the dynamically loaded
+		 * iconv library may use one of them. */
+		if (errno == EILSEQ || errno == EILSEQ) {
+			/* Can't convert: insert a '?' and skip a character.  This assumes
+			 * conversion from 'encoding' to something else.  In other
+			 * situations we don't know what to skip anyway. */
+			*to++ = *from++;
+			fromlen -= 1;
+		} else if (errno != E2BIG) {
+			/* conversion failed */
+			free(result);
+			result = NULL;
+			break;
+		}
+		/* Not enough room or skipping illegal sequence. */
+		done = to - (char *) result;
+	}
+	return result;
 }
 
 int put1ch(ch)
