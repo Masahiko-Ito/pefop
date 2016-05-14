@@ -53,10 +53,11 @@
 #if 0
 #define MAXCANDS (50)
 #else
-#define MAXCANDS (256)
+#define MAXCANDS (1024)         /* 候補の最大個数 */
 #endif
-#define MAXCANDLEN (64)
-#define MAXLINELEN (256)
+#define MAXCANDLEN (64)         /* 候補の最大長(辞書:EUC-JP) */
+#define MAXLINELEN (256)        /* 読みの最大長 */
+#define MAXRECVLEN (65536)      /* pbserverからの受信最大長 */
 
 #if defined(UNIX98)
 #       define _XOPEN_SOURCE
@@ -108,7 +109,7 @@ int readCharFromStdin(unsigned char *);
  */
 const char *Mode_name[2] = { "[En]", "[Ja]" };
 
-const char *Amsg = "pefop version 0.4.2 by Masahiko Ito.\nToggleKey=^O\n";
+const char *Amsg = "pefop version 0.4.3 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop done!!\n";
 
 char *Shell;
@@ -149,7 +150,7 @@ unsigned char *Cands[MAXCANDLEN];
 unsigned char *Cands[MAXCANDS];
 #endif
 unsigned char Target[MAXLINELEN];	/* 入力された未確定平仮名文字列 */
-unsigned char Candstr[8192];	/* 侯補文字列 */
+unsigned char Candstr[MAXRECVLEN];	/* 侯補文字列 */
 int Mode;			/* POBOX_MODE_XXX */
 int Ncands;			/* number of candidates */
 int Curcand;			/* index of a selecting candidate */
@@ -783,7 +784,9 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 		}
 		int t = open("/dev/tty", O_RDWR);
 		if (t >= 0) {
+#if defined(TIOCNOTTY)
 			ioctl(t, TIOCNOTTY, (char *) 0);
+#endif
 			close(t);
 		}
 		getslave();
