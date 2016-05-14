@@ -1,0 +1,42 @@
+=======================================================================
+              pefop - pofep-like POBox frontend processor
+              created by Masahiko Ito <m-ito@myh.no-ip.org>
+=======================================================================
+
+みなさん、日本語入力システムとして POBox(*1)というのをご存知かと思い
+ます。またそのフロントエンドとして pofep(*2)という物が有ります...いや
+有りました。残念ながらpofepに関しては公式サイトが消滅してしまったよう
+なのです。
+
+最近、Slackware ARM 14.0 on zaurus(SL-C760)な環境で、POBoxとpofepを利
+用しようと思いつき、NetBSD/hpcmips on MobileGear(MC-R300)な環境から
+pofepのソースをサルベージし、無事インストールできました。ただ、このよ
+うな有益なソフトウェアが埋もれて行ってしまうのは非常にもったいないとの
+思いが有り、サルベージしたソースを公開しようかと思ったのですが、独自の
+カスタマイズ が入りまくっていたので、それをそのまま公開するのも気が引
+けました。
+
+そしてあれこれ思案していたのですが、以前にcanfep(*3)をベースにpefnac(*4)
+なるモノをでっちあげた事が有ったので、今回も同じように
+
+                               pefop
+
+なるものをでっちあげたれ！と思ったしだいです...	。
+
+Download: 
+  2012.11.06 http://myh.no-ip.org/~m-ito/pefop/pefop-0.1.tar.gz
+
+また、最後に成りますが、pefopは、当然pofep(by TAKANO Ryousei氏)の存在無
+しには有り得ませんでした。大変有益なソフトウェアを自由なライセ ンスの元
+に公開されたTAKANO Ryousei氏に感謝致します。
+
+-----------------------------------------------------------------------
+(*1) POBox情報
+     http://www.pitecan.com/OpenPOBox/
+(*2) pofep(消失)
+     http://tiki.is.os-omicron.org/tiki.cgi?c=v&p=VR3%A4%C7POBox
+(*3) のぞむの Linux なウェブページ
+     http://www.geocities.co.jp/SiliconValley-Bay/7584/canfep/
+(*4) pefnac-0.5.1(canfep-like canna frontend processor)
+     http://myh.no-ip.org/~m-ito/pefnac/index.html
+
