@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <unistd.h>
 #include "server.h"
 
 static char *gServerHost = NULL;
@@ -20,8 +21,6 @@ static FILE *gWrServ;
 int pobox_connect()
 {
 	int sock;
-	int i;
-	unsigned short port;
 	struct sockaddr_in hostaddr;
 	struct hostent *entry;
 	struct servent *serv;
@@ -145,7 +144,6 @@ void pobox_selected(int key)
 void pobox_context(char *str)
 {
 	char r[2];
-	char *buf;
 
 	if (!str)
 		return;

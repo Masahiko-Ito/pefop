@@ -53,6 +53,8 @@
 #define CTRL_KEYS 31		/* default control keys */
 #define NEXTPAGE_KEY (14)	/* CTRL-N */
 #define PREVPAGE_KEY (16)	/* CTRL-P */
+#define FORWARD_KEY (6)		/* CTRL-F */
+#define BACKWARD_KEY (2)	/* CTRL-B */
 
 #if 0
 #define MAXCANDS (50)
@@ -71,6 +73,14 @@
  * typedef
  */
 typedef void (*SIG_PF) (int);
+
+/*
+ * 外部関数宣言
+ */
+extern int getpt (void);
+extern char *ptsname(int);
+extern int grantpt(int);
+extern int unlockpt(int);
 
 /*
  * 関数宣言
@@ -98,7 +108,9 @@ void loop();
 void write_utf8();
 char *iconv_string();
 int put1ch();
-static char *Tgetstr(char *id, char **area);
+static char *Tgetstr(char *, char **);
+int readCharFromStdin(unsigned char *);
+int isConvertable(iconv_t, char *, int);
 
 /*
  * 大局変数
@@ -106,7 +118,7 @@ static char *Tgetstr(char *id, char **area);
 const char *Mode_name[2] = { "[En]", "[Ja]" };
 
 const char *Amsg =
-    "pefop-utf8 version 0.4.1 by Masahiko Ito.\nToggleKey=^O\n";
+    "pefop-utf8 version 0.4.2 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop-utf8 done!!\n";
 
 char *Shell;
@@ -135,6 +147,10 @@ char *Ce;			/* カーソル位置から行の最後までを削除する */
 char *Ts;
 char *Fs;
 char *Ds;
+char *Ku;
+char *Kd;
+char *Kr;
+char *Kl;
 int Fpid = 0;
 struct termios *Ftt = 0;
 char Endmsg[BUFSIZ] = "";
@@ -363,7 +379,7 @@ void loop()
 	int search;
 
 	Fd_put1ch = Wfd;
-	while (read(0, s, 1)) {
+	while (readCharFromStdin(s)) {
 		if (*s == FEP_KEY) {	/* toggle mode */
 			Mode =
 			    (Mode ? POBOX_MODE_ALPHABET :
@@ -379,7 +395,8 @@ void loop()
 		if (Mode != POBOX_MODE_ALPHABET
 		    && (*s != '\0' && *s != '\b' && *s != '\r'
 			&& *s != '\n' && *s != NEXTPAGE_KEY
-			&& *s != PREVPAGE_KEY && *s != '\t')
+			&& *s != PREVPAGE_KEY && *s != '\t'
+			&& *s != FORWARD_KEY && *s != BACKWARD_KEY)
 		    && *s < CTRL_KEYS) {
 			Mode = POBOX_MODE_ALPHABET;
 			modeline();
@@ -449,6 +466,7 @@ int select_on_routine(unsigned char c)
 
 	case '\b':		/* previous candidate */
 	case 0x7f:
+	case BACKWARD_KEY:
 		if (Curcand > 0) {
 			Curcand--;
 			if (Curpage > 0 && Curcand < Page[Curpage]) {
@@ -482,6 +500,7 @@ int select_on_routine(unsigned char c)
 		break;
 
 	case ' ':		/* next candidate */
+	case FORWARD_KEY:		/* next candidate */
 		if (Curcand < Ncands - 1) {
 			Curcand++;
 		}
@@ -548,6 +567,7 @@ int select_off_routine(unsigned char c)
 	switch (c) {
 	case '\b':		/* back space */
 	case 0x7f:
+	case BACKWARD_KEY:
 		if ((len = strlen((char *) Target)) > 0) {
 			Target[len - 1] = '\0';
 			ret = 1;
@@ -569,6 +589,7 @@ int select_off_routine(unsigned char c)
 
 	case ' ':
 	case NEXTPAGE_KEY:	/* CTRL-N */
+	case FORWARD_KEY:	/* CTRL-N */
 		Status = POBOX_SELECT_ON;
 		Curcand = 0;
 		break;
@@ -671,6 +692,12 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 	/* カーソル位置から行の最後までを削除する */
 	Ce = Tgetstr("ce", &pt);
 
+	/* カーソルキー 上下右左 */
+	Ku = Tgetstr("ku", &pt);
+	Kd = Tgetstr("kd", &pt);
+	Kr = Tgetstr("kr", &pt);
+	Kl = Tgetstr("kl", &pt);
+
 	/* カラム数とライン数 */
 	Co = tgetnum("co");
 	Li = tgetnum("li");
@@ -771,7 +798,6 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 			close(0);
 			int cc;
 			char obuf[BUFSIZ];
-			char buff[BUFSIZ];
 			while (1) {
 				cc = (int) read(Master, obuf, BUFSIZ);
 				if (cc <= 0)
@@ -803,7 +829,7 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 		if (ac > 1)
 			execvp(av[1], &av[1]);
 		else
-			execl(shell, strrchr(shell, '/') + 1, 0);
+			execl(shell, strrchr(shell, '/') + 1, (char *)0);
 		perror(shell);
 		fail();
 	}
@@ -1114,4 +1140,122 @@ int ch;
 	onech = ch;
 	ret = write(Fd_put1ch, &onech, 1);
 	return ret;
+}
+
+int readCharFromStdin(buf)
+unsigned char *buf;
+{
+	static char buf_save[MAXLINELEN];
+	static int bs_rp = 0;
+	static int bs_wp = 0;
+	unsigned char buftmp[2];
+	int ret;
+	int i;
+	int ku_sw, kd_sw, kr_sw, kl_sw;
+
+	if (buf_save[bs_rp] != '\0'){
+		*buf = buf_save[bs_rp];
+		buf_save[bs_rp] = '\0';
+		bs_rp++;
+		if (bs_rp >= MAXLINELEN){
+			bs_rp = 0;
+		}
+		return 1;
+	}else{
+		if (Mode == POBOX_MODE_ALPHABET){
+			return read(0, buf, 1);
+		}else{
+			bs_rp = bs_wp = 0;
+			buf_save[0] = '\0';
+			if ((ret = read(0, buftmp, 1)) <= 0){
+				*buf = '\0';
+				return ret;
+			}else{
+				if (buftmp[0] >= ' '){
+					*buf = buftmp[0];
+					return 1;
+				}else{
+					ku_sw = 1;
+					kd_sw = 1;
+					kr_sw = 1;
+					kl_sw = 1;
+					i = 0;
+					for (;;){
+						if (ku_sw == 1){
+							if (Ku[i] == buftmp[0]){
+								if (Ku[i + 1] == '\0'){
+									*buf = PREVPAGE_KEY;
+									bs_rp = bs_wp = 0;
+									buf_save[0] = '\0';
+									return 1;
+								}
+							}else{
+								ku_sw = 0;
+							}
+						}
+						if (kd_sw == 1){
+							if (Kd[i] == buftmp[0]){
+								if (Kd[i + 1] == '\0'){
+									*buf = NEXTPAGE_KEY;
+									bs_rp = bs_wp = 0;
+									buf_save[0] = '\0';
+									return 1;
+								}
+							}else{
+								kd_sw = 0;
+							}
+						}
+						if (kr_sw == 1){
+							if (Kr[i] == buftmp[0]){
+								if (Kr[i + 1] == '\0'){
+									*buf = FORWARD_KEY;
+									bs_rp = bs_wp = 0;
+									buf_save[0] = '\0';
+									return 1;
+								}
+							}else{
+								kr_sw = 0;
+							}
+						}
+						if (kl_sw == 1){
+							if (Kl[i] == buftmp[0]){
+								if (Kl[i + 1] == '\0'){
+									*buf = BACKWARD_KEY;
+									bs_rp = bs_wp = 0;
+									buf_save[0] = '\0';
+									return 1;
+								}
+							}else{
+								kl_sw = 0;
+							}
+						}
+						buf_save[bs_wp++] = buftmp[0];
+						if (bs_wp >= MAXLINELEN){
+							bs_wp = 0;
+						}
+						buf_save[bs_wp] = '\0';
+						if (ku_sw == 0 &&
+						    kd_sw == 0 &&
+						    kr_sw == 0 &&
+						    kl_sw == 0){
+							*buf = buf_save[bs_rp];
+							buf_save[bs_rp] = '\0';
+							bs_rp++;
+							if (bs_rp >= MAXLINELEN){
+								bs_rp = 0;
+							}
+							return 1;
+						}
+						if ((ret = read(0, buftmp, 1)) <= 0){
+							*buf = '\0';
+							bs_rp = bs_wp = 0;
+							buf_save[0] = '\0';
+							return ret;
+						}
+						i++;
+					}
+				}
+			}
+		}
+	}
 }
