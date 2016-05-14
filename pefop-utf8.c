@@ -61,7 +61,7 @@
 #else
 #define MAXCANDS (1024)		/* 候補の最大個数 */
 #endif
-#define MAXCANDLEN (64)		/* 候補の最大長(辞書:EUC-JP) */
+#define MAXCANDLEN (256)	/* 候補の最大長(辞書:EUC-JP) */
 #define MAXLINELEN (256)	/* 読みの最大長 */
 #define MAXRECVLEN (65536)	/* pbserverからの受信最大長 */
 
@@ -78,7 +78,7 @@ typedef void (*SIG_PF) (int);
 /*
  * 外部関数宣言
  */
-extern int getpt (void);
+extern int getpt(void);
 extern char *ptsname(int);
 extern int grantpt(int);
 extern int unlockpt(int);
@@ -119,7 +119,7 @@ int isConvertable(iconv_t, char *, int);
 const char *Mode_name[2] = { "[En]", "[Ja]" };
 
 const char *Amsg =
-    "pefop-utf8 version 0.4.3 by Masahiko Ito.\nToggleKey=^O\n";
+    "pefop-utf8 version 0.4.4 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop-utf8 done!!\n";
 
 char *Shell;
@@ -442,9 +442,10 @@ void loop()
 #else
 			while (p && Ncands < MAXCANDS) {
 #endif
-				if (isConvertable(Eucjp_to_utf8_cd, p, strlen(p))){
-					strncpy((char *) Cands[Ncands++], p,
-						MAXCANDLEN - 1);
+				if (isConvertable
+				    (Eucjp_to_utf8_cd, p, strlen(p))) {
+					strncpy((char *) Cands[Ncands++],
+						p, MAXCANDLEN - 1);
 				}
 				p = strtok(NULL, "\t\r\n");
 			}
@@ -501,7 +502,7 @@ int select_on_routine(unsigned char c)
 		break;
 
 	case ' ':		/* next candidate */
-	case FORWARD_KEY:		/* next candidate */
+	case FORWARD_KEY:	/* next candidate */
 		if (Curcand < Ncands - 1) {
 			Curcand++;
 		}
@@ -832,7 +833,7 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 		if (ac > 1)
 			execvp(av[1], &av[1]);
 		else
-			execl(shell, strrchr(shell, '/') + 1, (char *)0);
+			execl(shell, strrchr(shell, '/') + 1, (char *) 0);
 		perror(shell);
 		fail();
 	}
@@ -1127,9 +1128,9 @@ int isConvertable(iconv_t fd, char *str, int slen)
 		/* Not enough room or skipping illegal sequence. */
 		done = to - (char *) result;
 	}
-	if (result == NULL){
+	if (result == NULL) {
 		return 0;
-	}else{
+	} else {
 		return !0;
 	}
 }
@@ -1156,100 +1157,155 @@ unsigned char *buf;
 	int i;
 	int ku_sw, kd_sw, kr_sw, kl_sw;
 
-	if (buf_save[bs_rp] != '\0'){
+	if (buf_save[bs_rp] != '\0') {
 		*buf = buf_save[bs_rp];
 		buf_save[bs_rp] = '\0';
 		bs_rp++;
-		if (bs_rp >= MAXLINELEN){
+		if (bs_rp >= MAXLINELEN) {
 			bs_rp = 0;
 		}
 		return 1;
-	}else{
-		if (Mode == POBOX_MODE_ALPHABET){
+	} else {
+		if (Mode == POBOX_MODE_ALPHABET) {
 			return read(0, buf, 1);
-		}else{
+		} else {
 			bs_rp = bs_wp = 0;
 			buf_save[0] = '\0';
-			if ((ret = read(0, buftmp, 1)) <= 0){
+			if ((ret = read(0, buftmp, 1)) <= 0) {
 				*buf = '\0';
 				return ret;
-			}else{
-				if (buftmp[0] >= ' '){
+			} else {
+				if (buftmp[0] >= ' ') {
 					*buf = buftmp[0];
 					return 1;
-				}else{
+				} else {
 					ku_sw = 1;
 					kd_sw = 1;
 					kr_sw = 1;
 					kl_sw = 1;
 					i = 0;
-					for (;;){
-						if (ku_sw == 1){
-							if (Ku[i] == buftmp[0]){
-								if (Ku[i + 1] == '\0'){
+					for (;;) {
+						if (ku_sw == 1) {
+							if (Ku[i] ==
+							    buftmp[0]) {
+								if (Ku
+								    [i +
+								     1] ==
+								    '\0') {
 									*buf = PREVPAGE_KEY;
-									bs_rp = bs_wp = 0;
-									buf_save[0] = '\0';
-									return 1;
+									bs_rp
+									    =
+									    bs_wp
+									    =
+									    0;
+									buf_save
+									    [0]
+									    =
+									    '\0';
+									return
+									    1;
 								}
-							}else{
+							} else {
 								ku_sw = 0;
 							}
 						}
-						if (kd_sw == 1){
-							if (Kd[i] == buftmp[0]){
-								if (Kd[i + 1] == '\0'){
+						if (kd_sw == 1) {
+							if (Kd[i] ==
+							    buftmp[0]) {
+								if (Kd
+								    [i +
+								     1] ==
+								    '\0') {
 									*buf = NEXTPAGE_KEY;
-									bs_rp = bs_wp = 0;
-									buf_save[0] = '\0';
-									return 1;
+									bs_rp
+									    =
+									    bs_wp
+									    =
+									    0;
+									buf_save
+									    [0]
+									    =
+									    '\0';
+									return
+									    1;
 								}
-							}else{
+							} else {
 								kd_sw = 0;
 							}
 						}
-						if (kr_sw == 1){
-							if (Kr[i] == buftmp[0]){
-								if (Kr[i + 1] == '\0'){
+						if (kr_sw == 1) {
+							if (Kr[i] ==
+							    buftmp[0]) {
+								if (Kr
+								    [i +
+								     1] ==
+								    '\0') {
 									*buf = FORWARD_KEY;
-									bs_rp = bs_wp = 0;
-									buf_save[0] = '\0';
-									return 1;
+									bs_rp
+									    =
+									    bs_wp
+									    =
+									    0;
+									buf_save
+									    [0]
+									    =
+									    '\0';
+									return
+									    1;
 								}
-							}else{
+							} else {
 								kr_sw = 0;
 							}
 						}
-						if (kl_sw == 1){
-							if (Kl[i] == buftmp[0]){
-								if (Kl[i + 1] == '\0'){
+						if (kl_sw == 1) {
+							if (Kl[i] ==
+							    buftmp[0]) {
+								if (Kl
+								    [i +
+								     1] ==
+								    '\0') {
 									*buf = BACKWARD_KEY;
-									bs_rp = bs_wp = 0;
-									buf_save[0] = '\0';
-									return 1;
+									bs_rp
+									    =
+									    bs_wp
+									    =
+									    0;
+									buf_save
+									    [0]
+									    =
+									    '\0';
+									return
+									    1;
 								}
-							}else{
+							} else {
 								kl_sw = 0;
 							}
 						}
-						buf_save[bs_wp++] = buftmp[0];
-						if (bs_wp >= MAXLINELEN){
+						buf_save[bs_wp++] =
+						    buftmp[0];
+						if (bs_wp >= MAXLINELEN) {
 							bs_wp = 0;
 						}
 						buf_save[bs_wp] = '\0';
 						if (ku_sw == 0 &&
 						    kd_sw == 0 &&
 						    kr_sw == 0 &&
-						    kl_sw == 0){
-							*buf = buf_save[bs_rp];
-							buf_save[bs_rp] = '\0';
+						    kl_sw == 0) {
+							*buf =
+							    buf_save
+							    [bs_rp];
+							buf_save[bs_rp] =
+							    '\0';
 							bs_rp++;
-							if (bs_rp >= MAXLINELEN){
+							if (bs_rp >=
+							    MAXLINELEN) {
 								bs_rp = 0;
 							}
 							return 1;
 						}
-						if ((ret = read(0, buftmp, 1)) <= 0){
+						if ((ret =
+						     read(0, buftmp,
+							  1)) <= 0) {
 							*buf = '\0';
 							bs_rp = bs_wp = 0;
 							buf_save[0] = '\0';
