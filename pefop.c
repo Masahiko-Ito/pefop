@@ -36,10 +36,10 @@
  * default key binding(if you want to change, see 'man ascii') 
  */
 #if 0
-#define FEP_KEY 15		/* default key: cntl-o */
+#define FEP_KEY 10		/* default key: cntl-j */
 #define FEP_KEY 28		/* default key: cntl-yen */
 #else
-#define FEP_KEY 10		/* default key: cntl-j */
+#define FEP_KEY 15		/* default key: cntl-o */
 #endif
 
 #define CLR_KEY  9		/* default key: TAB */
