@@ -6,7 +6,7 @@
  *
  *  本ソースは以下の処理により整形されています。
  *
- *    $ indent -i8 -kr pefop.c
+ *    $ indent -i8 -kr -l256 pefop.c
  *
  */
 
@@ -36,25 +36,20 @@
  * default key binding(if you want to change, see 'man ascii') 
  */
 #if 0
-#define FEP_KEY 10		/* default key: cntl-j */
-#define FEP_KEY 28		/* default key: cntl-yen */
+#define FEP_KEY (10)		/* default key: cntl-j */
+#define FEP_KEY (28)		/* default key: cntl-yen */
 #else
-#define FEP_KEY 15		/* default key: cntl-o */
+#define FEP_KEY (15)		/* default key: cntl-o */
 #endif
 
-#define CLR_KEY  9		/* default key: TAB */
-#define ESC_KEY 27
-#define CTRL_KEYS 31		/* default control keys */
+#define ESC_KEY (27)
+#define CTRL_KEYS (31)		/* default control keys */
 #define NEXTPAGE_KEY (14)	/* CTRL-N */
 #define PREVPAGE_KEY (16)	/* CTRL-P */
 #define FORWARD_KEY (6)		/* CTRL-F */
 #define BACKWARD_KEY (2)	/* CTRL-B */
 
-#if 0
-#define MAXCANDS (50)
-#else
 #define MAXCANDS (1024)		/* 候補の最大個数 */
-#endif
 #define MAXCANDLEN (256)	/* 候補の最大長(辞書:EUC-JP) */
 #define MAXLINELEN (256)	/* 読みの最大長 */
 #define MAXRECVLEN (65536)	/* pbserverからの受信最大長 */
@@ -109,7 +104,7 @@ int readCharFromStdin(unsigned char *);
  */
 const char *Mode_name[2] = { "[En]", "[Ja]" };
 
-const char *Amsg = "pefop version 0.4.4 by Masahiko Ito.\nToggleKey=^O\n";
+const char *Amsg = "pefop version 0.4.5 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop done!!\n";
 
 char *Shell;
@@ -134,23 +129,19 @@ char *Ue;
 char *Sc;			/* カーソル位置の保存，保存した位置への復帰 */
 char *Rc;
 char *Ce;			/* カーソル位置から行の最後までを削除する */
-char *Ts;
-char *Fs;
-char *Ds;
-char *Ku;
-char *Kd;
-char *Kr;
-char *Kl;
+char *Ts;			/* ステータスラインへ移動 */
+char *Fs;			/* ステータスラインから復帰 */
+char *Ds;			/* ステータスラインを非活性化 */
+char *Ku;			/* 上矢印 */
+char *Kd;			/* 下矢印 */
+char *Kr;			/* 右矢印 */
+char *Kl;			/* 左矢印 */
 int Fpid = 0;
 struct termios *Ftt = 0;
 char Endmsg[BUFSIZ] = "";
-#if 0
-unsigned char *Cands[MAXCANDLEN];
-#else
-unsigned char *Cands[MAXCANDS];
-#endif
+unsigned char *Cands[MAXCANDS];	/* 候補文字列の配列 */
 unsigned char Target[MAXLINELEN];	/* 入力された未確定平仮名文字列 */
-unsigned char Candstr[MAXRECVLEN];	/* 侯補文字列 */
+unsigned char Candstr[MAXRECVLEN];	/* pbserverから受け取った侯補文字列群 */
 int Mode;			/* POBOX_MODE_XXX */
 int Ncands;			/* number of candidates */
 int Curcand;			/* index of a selecting candidate */
@@ -159,6 +150,7 @@ int Page[MAXCANDS];
 int Status;
 int Pefop_mode_org;		/* 変換モード 1:曖昧検索 0:完全一致 */
 int Pefop_mode;			/* 変換モード 1:曖昧検索 0:完全一致 */
+int ArrowSw = 0;		/* 矢印キー変換したよスイッチ */
 /* スタティックなメンバ(シグナルハンドラ用)の初期化 */
 void (*sig_fp) (void) = NULL;
 static char Nullstr[] = "";
@@ -359,22 +351,17 @@ void loop()
 	Fd_put1ch = Wfd;
 	while (readCharFromStdin(s)) {
 		if (*s == FEP_KEY) {	/* toggle mode */
-			Mode =
-			    (Mode ? POBOX_MODE_ALPHABET :
-			     POBOX_MODE_KANJI);
+			Mode = (Mode ? POBOX_MODE_ALPHABET : POBOX_MODE_KANJI);
 			modeline();
 			reset_target();
 			length = 0;
 			del_cand(length);
 			Pefop_mode = Pefop_mode_org;
+			Ncands = 0;
 			continue;
 		}
 		/* if you input ESC_KEY, goto alphabet input mode (specialize case for vi) */
-		if (Mode != POBOX_MODE_ALPHABET
-		    && (*s != '\0' && *s != '\b' && *s != '\r'
-			&& *s != '\n' && *s != NEXTPAGE_KEY
-			&& *s != PREVPAGE_KEY && *s != '\t'
-			&& *s != FORWARD_KEY && *s != BACKWARD_KEY)
+		if (Mode != POBOX_MODE_ALPHABET && (*s != '\0' && *s != '\b' && *s != 0x7f && *s != '\r' && *s != '\n' && *s != NEXTPAGE_KEY && *s != PREVPAGE_KEY && *s != '\t' && *s != FORWARD_KEY && *s != BACKWARD_KEY)
 		    && *s < CTRL_KEYS) {
 			Mode = POBOX_MODE_ALPHABET;
 			modeline();
@@ -389,8 +376,7 @@ void loop()
 		}
 
 		/* main flow */
-		search = (Status == POBOX_SELECT_ON) ?
-		    select_on_routine(*s) : select_off_routine(*s);
+		search = (Status == POBOX_SELECT_ON) ? select_on_routine(*s) : select_off_routine(*s);
 		del_cand(length);
 		if (Curcand == -1) {
 			length = strlen((char *) Target);
@@ -403,24 +389,14 @@ void loop()
 		if (search) {
 			char *p;
 			if (Target[0] == '\0') {
-				pobox_getcands((char *) Target,
-					       (char *) Candstr,
-					       sizeof(Candstr) - 1, 1);
+				pobox_getcands((char *) Target, (char *) Candstr, sizeof(Candstr) - 1, 1);
 			} else {
-				pobox_getcands((char *) Target,
-					       (char *) Candstr,
-					       sizeof(Candstr) - 1,
-					       Pefop_mode);
+				pobox_getcands((char *) Target, (char *) Candstr, sizeof(Candstr) - 1, Pefop_mode);
 			}
 			Ncands = 0;
 			p = strtok((char *) Candstr, "\t\r\n");	/* skip */
-#if 0
-			while (p) {
-#else
 			while (p && Ncands < MAXCANDS) {
-#endif
-				strncpy((char *) Cands[Ncands++], p,
-					MAXCANDLEN - 1);
+				strncpy((char *) Cands[Ncands++], p, MAXCANDLEN - 1);
 				p = strtok(NULL, "\t\r\n");
 			}
 		}
@@ -434,37 +410,26 @@ int select_on_routine(unsigned char c)
 
 	Fd_put1ch = Wfd;
 	switch (c) {
-#if 0
-	case CLR_KEY:
-		reset_target();
-		break;
-#endif
-
-	case '\b':		/* previous candidate */
-	case 0x7f:
-	case BACKWARD_KEY:
+	case '\b':		/* BackSpace for previous candidate */
+	case 0x7f:		/* Delete */
+	case BACKWARD_KEY:	/* CTRL-B */
 		if (Curcand > 0) {
 			Curcand--;
 			if (Curpage > 0 && Curcand < Page[Curpage]) {
 				--Curpage;
 			}
-		} else {
-			Status = POBOX_SELECT_OFF;
-			Curcand = -1;
-			ret = 1;
-			write(Wfd, "\b", 1);
 		}
 		break;
 
-	case PREVPAGE_KEY:	/* CTRL-P */
+	case PREVPAGE_KEY:	/* CTRL-P for previous page of candidate */
 		if (Curpage > 0) {
 			Curcand = Page[Curpage] - 1;
 			Curpage--;
 		}
 		break;
 
-	case '\r':		/* decide pattern */
-	case '\n':
+	case '\r':		/* CarriageReturn for decide pattern */
+	case '\n':		/* LineFeed */
 		if (Curcand < 0) {
 			decide(Target);
 		} else {
@@ -475,8 +440,8 @@ int select_on_routine(unsigned char c)
 		ret = 1;
 		break;
 
-	case ' ':		/* next candidate */
-	case FORWARD_KEY:	/* next candidate */
+	case ' ':		/* Space for next candidate */
+	case FORWARD_KEY:	/* CTRL-F */
 		if (Curcand < Ncands - 1) {
 			Curcand++;
 		}
@@ -486,7 +451,7 @@ int select_on_routine(unsigned char c)
 
 		break;
 
-	case NEXTPAGE_KEY:	/* CTRL-N */
+	case NEXTPAGE_KEY:	/* CTRL-N for next page of candidate */
 		if (Page[Curpage + 1] > Page[Curpage]
 		    && Page[Curpage + 1] < Ncands) {
 			Curpage++;
@@ -494,7 +459,7 @@ int select_on_routine(unsigned char c)
 		}
 		break;
 
-	case '\t':		/* TAB */
+	case '\t':		/* TAB for changing Exact search or Fazzy search */
 		Status = POBOX_SELECT_OFF;
 		Curcand = -1;
 		Curpage = 0;
@@ -517,17 +482,6 @@ int select_on_routine(unsigned char c)
 		ret = select_off_routine(c);
 		break;
 	}
-#if 0
-	if (Status == POBOX_SELECT_ON && Curcand >= 0
-	    && Curcand >= Page[Curpage + 1]) {
-		++Curpage;
-	}
-
-	if (Status == POBOX_SELECT_ON && Curcand >= 0 && Curpage > 0
-	    && Curcand < Page[Curpage]) {
-		--Curpage;
-	}
-#endif
 	return ret;
 }
 
@@ -541,20 +495,36 @@ int select_off_routine(unsigned char c)
 	s[0] = c;
 	s[1] = '\0';
 	switch (c) {
-	case '\b':		/* back space */
-	case 0x7f:
-	case BACKWARD_KEY:
-		if ((len = strlen((char *) Target)) > 0) {
+	case '\b':		/* BackSpace for delete a last char of Target */
+	case 0x7f:		/* Delete */
+	case BACKWARD_KEY:	/* CTRL-B */
+	case PREVPAGE_KEY:	/* CTRL-P */
+		if (*Target == '\0') {
+			if (c == BACKWARD_KEY) {
+				if (ArrowSw == 1) {
+					write(Wfd, (char *) Kl, strlen(Kl));
+				} else {
+					write(Wfd, (char *) s, 1);
+				}
+			} else if (c == PREVPAGE_KEY) {
+				if (ArrowSw == 1) {
+					write(Wfd, (char *) Ku, strlen(Ku));
+				} else {
+					write(Wfd, (char *) s, 1);
+				}
+			} else {
+				write(Wfd, (char *) s, 1);
+			}
+		} else {
+			len = strlen((char *) Target);
 			Target[len - 1] = '\0';
 			ret = 1;
-		} else {
-			write(Wfd, s, 1);
 		}
 		break;
 
-	case '\r':		/* decide pattern */
-	case '\n':
-		if (Curcand == -1 && *Target == '\0') {
+	case '\r':		/* CarriageReturn for next candidate */
+	case '\n':		/* LineFeed */
+		if (*Target == '\0') {
 			write(Wfd, s, 1);
 		} else {
 			Status = POBOX_SELECT_ON;
@@ -563,14 +533,37 @@ int select_off_routine(unsigned char c)
 		}
 		break;
 
-	case ' ':
-	case NEXTPAGE_KEY:	/* CTRL-N */
-	case FORWARD_KEY:	/* next candidate */
-		Status = POBOX_SELECT_ON;
-		Curcand = 0;
+	case ' ':		/* Space for next candidate */
+		if (Ncands == 0 && *Target == '\0') {
+			write(Wfd, s, 1);
+		} else {
+			Status = POBOX_SELECT_ON;
+			Curcand = 0;
+			ret = 1;
+		}
 		break;
 
-	case '\t':		/* TAB */
+	case NEXTPAGE_KEY:	/* CTRL-N for moving cursor to down */
+		if (*Target == '\0') {
+			if (ArrowSw == 1) {
+				write(Wfd, (char *) Kd, strlen(Kd));
+			} else {
+				write(Wfd, (char *) s, 1);
+			}
+		}
+		break;
+
+	case FORWARD_KEY:	/* CTRL-F for moving cursor to forward */
+		if (*Target == '\0') {
+			if (ArrowSw == 1) {
+				write(Wfd, (char *) Kr, strlen(Kr));
+			} else {
+				write(Wfd, (char *) s, 1);
+			}
+		}
+		break;
+
+	case '\t':		/* TAB for changing Exact search or Fazzy search */
 		if (Pefop_mode == 0) {
 			Pefop_mode = 1;
 		} else {
@@ -580,13 +573,6 @@ int select_off_routine(unsigned char c)
 		break;
 
 	default:
-		if (c == '\0') {	/* [CTRL]+[SPACE] => [SPACE] */
-			c = ' ';
-			if (strlen((char *) Target) == 0) {
-				write(Wfd, &c, 1);
-				break;
-			}
-		}
 		if (!isprint(c)) {
 			write(Wfd, &c, 1);
 			break;
@@ -619,10 +605,7 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 	Hs = 0;
 	pefop_hs = getenv("PEFOP_HS");
 	if (pefop_hs) {
-		if (strcmp(pefop_hs, "y") == 0 ||
-		    strcmp(pefop_hs, "yes") == 0 ||
-		    strcmp(pefop_hs, "Y") == 0 ||
-		    strcmp(pefop_hs, "YES") == 0) {
+		if (strcmp(pefop_hs, "y") == 0 || strcmp(pefop_hs, "yes") == 0 || strcmp(pefop_hs, "Y") == 0 || strcmp(pefop_hs, "YES") == 0) {
 			Hs = 1;
 		} else {
 			Hs = 2;
@@ -632,10 +615,7 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 	Pefop_mode_org = 1;
 	pefop_exact = getenv("PEFOP_EXACT");
 	if (pefop_exact) {
-		if (strcmp(pefop_exact, "y") == 0 ||
-		    strcmp(pefop_exact, "yes") == 0 ||
-		    strcmp(pefop_exact, "Y") == 0 ||
-		    strcmp(pefop_exact, "YES") == 0) {
+		if (strcmp(pefop_exact, "y") == 0 || strcmp(pefop_exact, "yes") == 0 || strcmp(pefop_exact, "Y") == 0 || strcmp(pefop_exact, "YES") == 0) {
 			Pefop_mode_org = 0;
 		}
 	}
@@ -680,8 +660,7 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 
 	if (Hs == 0) {
 		/* kon と jfbterm ではステータスラインを使わない */
-		if (strcmp(term, "kon") == 0
-		    || strcmp(term, "jfbterm") == 0) {
+		if (strcmp(term, "kon") == 0 || strcmp(term, "jfbterm") == 0) {
 			Hs = 0;
 		} else {
 			/* ステータスラインを持っているかどうか */
@@ -834,11 +813,7 @@ void done()
 		close(Master);
 		exit(0);
 	}
-#if 0
-	tcsetattr(0, TCSAFLUSH, &Tt);
-#else
 	tcsetattr(0, TCSAFLUSH, &Stt);
-#endif
 	exit(0);
 }
 
@@ -865,10 +840,6 @@ void getmaster()
 	for (char *p = "pqrs"; *p; p++) {
 		line[strlen("/dev/pty")] = *p;
 		*pty = '0';
-#if 0
-		if (stat(line, &stb) < 0)
-			break;
-#endif
 		for (char *s = "0123456789abcdef"; *s; s++) {
 			*pty = *s;
 			Master = open(line, O_RDWR);
@@ -955,11 +926,7 @@ void finish()
 			die = 1;
 	}
 	if (die) {
-#if 0
-		tcsetattr(0, TCSAFLUSH, Ftt);
-#else
 		tcsetattr(0, TCSAFLUSH, &Stt);
-#endif
 		if (strlen(Endmsg) != 0)
 			printf("%s", Endmsg);
 		if (sig_fp != NULL)
@@ -1005,6 +972,8 @@ unsigned char *buf;
 	int i;
 	int ku_sw, kd_sw, kr_sw, kl_sw;
 
+	ArrowSw = 0;
+
 	if (buf_save[bs_rp] != '\0') {
 		*buf = buf_save[bs_rp];
 		buf_save[bs_rp] = '\0';
@@ -1034,126 +1003,76 @@ unsigned char *buf;
 					i = 0;
 					for (;;) {
 						if (ku_sw == 1) {
-							if (Ku[i] ==
-							    buftmp[0]) {
-								if (Ku
-								    [i +
-								     1] ==
-								    '\0') {
+							if (Ku[i] == buftmp[0]) {
+								if (Ku[i + 1] == '\0') {
 									*buf = PREVPAGE_KEY;
-									bs_rp
-									    =
-									    bs_wp
-									    =
-									    0;
-									buf_save
-									    [0]
-									    =
-									    '\0';
-									return
-									    1;
+									bs_rp = bs_wp = 0;
+									buf_save[0]
+									    = '\0';
+									ArrowSw = 1;
+									return 1;
 								}
 							} else {
 								ku_sw = 0;
 							}
 						}
 						if (kd_sw == 1) {
-							if (Kd[i] ==
-							    buftmp[0]) {
-								if (Kd
-								    [i +
-								     1] ==
-								    '\0') {
+							if (Kd[i] == buftmp[0]) {
+								if (Kd[i + 1] == '\0') {
 									*buf = NEXTPAGE_KEY;
-									bs_rp
-									    =
-									    bs_wp
-									    =
-									    0;
-									buf_save
-									    [0]
-									    =
-									    '\0';
-									return
-									    1;
+									bs_rp = bs_wp = 0;
+									buf_save[0]
+									    = '\0';
+									ArrowSw = 1;
+									return 1;
 								}
 							} else {
 								kd_sw = 0;
 							}
 						}
 						if (kr_sw == 1) {
-							if (Kr[i] ==
-							    buftmp[0]) {
-								if (Kr
-								    [i +
-								     1] ==
-								    '\0') {
+							if (Kr[i] == buftmp[0]) {
+								if (Kr[i + 1] == '\0') {
 									*buf = FORWARD_KEY;
-									bs_rp
-									    =
-									    bs_wp
-									    =
-									    0;
-									buf_save
-									    [0]
-									    =
-									    '\0';
-									return
-									    1;
+									bs_rp = bs_wp = 0;
+									buf_save[0]
+									    = '\0';
+									ArrowSw = 1;
+									return 1;
 								}
 							} else {
 								kr_sw = 0;
 							}
 						}
 						if (kl_sw == 1) {
-							if (Kl[i] ==
-							    buftmp[0]) {
-								if (Kl
-								    [i +
-								     1] ==
-								    '\0') {
+							if (Kl[i] == buftmp[0]) {
+								if (Kl[i + 1] == '\0') {
 									*buf = BACKWARD_KEY;
-									bs_rp
-									    =
-									    bs_wp
-									    =
-									    0;
-									buf_save
-									    [0]
-									    =
-									    '\0';
-									return
-									    1;
+									bs_rp = bs_wp = 0;
+									buf_save[0]
+									    = '\0';
+									ArrowSw = 1;
+									return 1;
 								}
 							} else {
 								kl_sw = 0;
 							}
 						}
-						buf_save[bs_wp++] =
-						    buftmp[0];
+						buf_save[bs_wp++] = buftmp[0];
 						if (bs_wp >= MAXLINELEN) {
 							bs_wp = 0;
 						}
 						buf_save[bs_wp] = '\0';
-						if (ku_sw == 0 &&
-						    kd_sw == 0 &&
-						    kr_sw == 0 &&
-						    kl_sw == 0) {
-							*buf =
-							    buf_save
-							    [bs_rp];
-							buf_save[bs_rp] =
-							    '\0';
+						if (ku_sw == 0 && kd_sw == 0 && kr_sw == 0 && kl_sw == 0) {
+							*buf = buf_save[bs_rp];
+							buf_save[bs_rp] = '\0';
 							bs_rp++;
-							if (bs_rp >=
-							    MAXLINELEN) {
+							if (bs_rp >= MAXLINELEN) {
 								bs_rp = 0;
 							}
 							return 1;
 						}
-						if ((ret =
-						     read(0, buftmp,
-							  1)) <= 0) {
+						if ((ret = read(0, buftmp, 1)) <= 0) {
 							*buf = '\0';
 							bs_rp = bs_wp = 0;
 							buf_save[0] = '\0';

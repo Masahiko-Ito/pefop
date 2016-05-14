@@ -48,8 +48,7 @@ int pobox_connect()
 	}
 
 	if ('0' <= *hostname && *hostname <= '9') {
-		if (sscanf(hostname, "%d.%d.%d.%d", &a1, &a2, &a3, &a4) !=
-		    4) {
+		if (sscanf(hostname, "%d.%d.%d.%d", &a1, &a2, &a3, &a4) != 4) {
 			return -1;
 		}
 		a1 = (a1 << 24) | (a2 << 16) | (a3 << 8) | a4;
@@ -66,9 +65,7 @@ int pobox_connect()
 	}
 	hostaddr.sin_family = AF_INET;
 	hostaddr.sin_port = serv ? serv->s_port : htons(POBOX_PORT_NUMBER);
-	if (connect
-	    (sock, (struct sockaddr *) &hostaddr,
-	     sizeof(struct sockaddr_in)) < 0) {
+	if (connect(sock, (struct sockaddr *) &hostaddr, sizeof(struct sockaddr_in)) < 0) {
 		close(sock);
 		return -1;
 	}
