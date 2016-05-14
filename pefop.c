@@ -97,7 +97,7 @@ static char *Tgetstr(char *id, char **area);
  */
 const char *Mode_name[2] = { "[En]", "[Ja]" };
 
-const char *Amsg = "pefop version 0.4 by Masahiko Ito.\nToggleKey=^O\n";
+const char *Amsg = "pefop version 0.4.1 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop done!!\n";
 
 char *Shell;

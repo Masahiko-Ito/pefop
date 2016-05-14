@@ -106,7 +106,7 @@ static char *Tgetstr(char *id, char **area);
 const char *Mode_name[2] = { "[En]", "[Ja]" };
 
 const char *Amsg =
-    "pefop-utf8 version 0.4 by Masahiko Ito.\nToggleKey=^O\n";
+    "pefop-utf8 version 0.4.1 by Masahiko Ito.\nToggleKey=^O\n";
 const char *Emsg = "pefop-utf8 done!!\n";
 
 char *Shell;
@@ -424,8 +424,10 @@ void loop()
 #else
 			while (p && Ncands < MAXCANDS) {
 #endif
-				strncpy((char *) Cands[Ncands++], p,
-					MAXCANDLEN - 1);
+				if (isConvertable(Eucjp_to_utf8_cd, p, strlen(p))){
+					strncpy((char *) Cands[Ncands++], p,
+						MAXCANDLEN - 1);
+				}
 				p = strtok(NULL, "\t\r\n");
 			}
 		}
@@ -1030,7 +1032,7 @@ char *iconv_string(iconv_t fd, char *str, int slen)
 		}
 		/* Check both ICONV_EILSEQ and EILSEQ, because the dynamically loaded
 		 * iconv library may use one of them. */
-		if (errno == EILSEQ || errno == EILSEQ) {
+		if (errno == EILSEQ || errno == EINVAL) {
 			/* Can't convert: insert a '?' and skip a character.  This assumes
 			 * conversion from 'encoding' to something else.  In other
 			 * situations we don't know what to skip anyway. */
@@ -1046,6 +1048,61 @@ char *iconv_string(iconv_t fd, char *str, int slen)
 		done = to - (char *) result;
 	}
 	return result;
+}
+
+int isConvertable(iconv_t fd, char *str, int slen)
+{
+	char *from;
+	size_t fromlen;
+	char *to;
+	size_t tolen;
+	size_t len = 0;
+	size_t done = 0;
+	char *result = NULL;
+	char *p;
+
+	from = (char *) str;
+	fromlen = slen;
+	for (;;) {
+		if (len == 0 || errno == E2BIG) {
+			/* Allocate enough room for most conversions.  When re-allocating
+			 * increase the buffer size. */
+			len = len + fromlen * 2 + 40;
+			p = (char *) malloc((unsigned) len);
+			if (p != NULL && done > 0)
+				memcpy(p, result, done);
+			free(result);
+			result = p;
+			if (result == NULL)	/* out of memory */
+				break;
+		}
+
+		to = (char *) result + done;
+		tolen = len - done - 2;
+		/* Avoid a warning for systems with a wrong iconv() prototype by
+		 * casting the second argument to void *. */
+		if (iconv(fd, &from, &fromlen, &to, &tolen) !=
+		    (size_t) - 1) {
+			/* Finished, append a NUL. */
+			*to = 0;
+			break;
+		}
+		/* Check both ICONV_EILSEQ and EILSEQ, because the dynamically loaded
+		 * iconv library may use one of them. */
+		if (errno != E2BIG) {
+			/* conversion failed */
+			free(result);
+			result = NULL;
+			break;
+		}
+		/* Not enough room or skipping illegal sequence. */
+		done = to - (char *) result;
+	}
+	if (result == NULL){
+		return 0;
+	}else{
+		return !0;
+	}
 }
 
 int put1ch(ch)
