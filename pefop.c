@@ -48,7 +48,11 @@
 #define NEXTPAGE_KEY (14)	/* CTRL-N */
 #define PREVPAGE_KEY (16)	/* CTRL-P */
 
+#if 0
 #define MAXCANDS (50)
+#else
+#define MAXCANDS (256)
+#endif
 #define MAXCANDLEN (64)
 #define MAXLINELEN (256)
 
@@ -92,7 +96,7 @@ static char *Tgetstr(char *id, char **area);
  * 大局変数
  */
 const char *Mode_name[2] = { "[En]", "[Ja]" };
-const char *Amsg = "pefop version 0.1 by Masahiko Ito.\nToggleKey=^J\n";
+const char *Amsg = "pefop version 0.3 by Masahiko Ito.\nToggleKey=^J\n";
 const char *Emsg = "pefop done!!\n";
 
 char *Shell;
@@ -123,7 +127,11 @@ char *Ds;
 int Fpid = 0;
 struct termios *Ftt = 0;
 char Endmsg[BUFSIZ] = "";
+#if 0
 unsigned char *Cands[MAXCANDLEN];
+#else
+unsigned char *Cands[MAXCANDS];
+#endif
 unsigned char Target[MAXLINELEN];	/* 入力された未確定平仮名文字列 */
 unsigned char Candstr[8192];	/* 侯補文字列 */
 int Mode;			/* POBOX_MODE_XXX */
@@ -132,6 +140,7 @@ int Curcand;			/* index of a selecting candidate */
 int Curpage;			/* page of modeline candidates */
 int Page[MAXCANDS];
 int Status;
+int Pefop_mode;			/* 変換モード 1:曖昧検索 0:完全一致 */
 /* スタティックなメンバ(シグナルハンドラ用)の初期化 */
 void (*sig_fp) (void) = NULL;
 static char Nullstr[] = "";
@@ -372,11 +381,20 @@ void loop()
 
 		if (search) {
 			char *p;
-			pobox_getcands((char *) Target, (char *) Candstr,
+			if (Target[0] == '\0'){
+				pobox_getcands((char *) Target, (char *) Candstr,
 				       sizeof(Candstr) - 1, 1);
+			}else{
+				pobox_getcands((char *) Target, (char *) Candstr,
+				       sizeof(Candstr) - 1, Pefop_mode);
+			}
 			Ncands = 0;
 			p = strtok((char *) Candstr, "\t\r\n");	/* skip */
+#if 0
 			while (p) {
+#else
+			while (p && Ncands < MAXCANDS) {
+#endif
 				strncpy((char *) Cands[Ncands++], p,
 					MAXCANDLEN - 1);
 				p = strtok(NULL, "\t\r\n");
@@ -461,7 +479,7 @@ int select_on_routine(unsigned char c)
 		ret = select_off_routine(c);
 		break;
 	}
-
+#if 0
 	if (Status == POBOX_SELECT_ON && Curcand >= 0
 	    && Curcand >= Page[Curpage + 1]) {
 		++Curpage;
@@ -471,7 +489,7 @@ int select_on_routine(unsigned char c)
 	    && Curcand < Page[Curpage]) {
 		--Curpage;
 	}
-
+#endif
 	return ret;
 }
 
@@ -546,6 +564,7 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 	char buff[BUFSIZ];
 	char *term;
 	char *pefop_hs;
+	char *pefop_exact;
 
 	Fd_put1ch = 1;
 	Hs = 0;
@@ -558,6 +577,17 @@ void setup(int ac, char **av, char *amsg, char *emsg)
 			Hs = 1;
 		} else {
 			Hs = 2;
+		}
+	}
+
+	Pefop_mode = 1;
+	pefop_exact = getenv("PEFOP_EXACT");
+	if (pefop_exact){
+		if (strcmp(pefop_exact, "y") == 0 ||
+		    strcmp(pefop_exact, "yes") == 0 ||
+		    strcmp(pefop_exact, "Y") == 0 ||
+		    strcmp(pefop_exact, "YES") == 0) {
+			Pefop_mode = 0;
 		}
 	}
 
