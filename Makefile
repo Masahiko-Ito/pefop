@@ -1,5 +1,6 @@
 CC=gcc
-LIBS=-ltermcap
+##LIBS=-ltermcap
+LIBS=-lncursesw
 CFLAGS=-O2 -g -Wall -DUNIX98
 LDFLAGS=
 
